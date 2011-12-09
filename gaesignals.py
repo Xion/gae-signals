@@ -5,27 +5,18 @@ Signals' library for Google App Engine
 '''
 from google.appengine.api import memcache
 from time import time
+import collections
+import itertools
 
 
 class Signal(object):
 	''' Represents the signal, identified by a name. '''
-	LISTENERS_NAMESPACE = 'gae-signals__listeners'
 	MESSAGES_NAMESPACE = 'gae-signals__messages'
 
 	def __init__(self, name):
 		if not name:
 			raise ValueError, "Signal must have a name"
 		self.name = name
-
-	def listen(self, listener):
-		''' Adds new listener for the signal.
-		@param listener: A callable or fully qualified name of thereof
-		'''
-		with Lock(self.name):
-			listeners = memcache.get(self.name, namespace = LISTENERS_NAMESPACE)
-			listeners = set(listeners or [])
-			listeners.add(self.__get_listener_name(listener))
-			memcache.set(self.name, namespace = LISTENERS_NAMESPACE)
 
 	def try_send(self, data=None):
 		''' Attempts to send the signal to registered listeners.
@@ -34,7 +25,6 @@ class Signal(object):
 		@return: Whether sending succeeded
 		'''
 		lock = Lock(self.name)
-
 		try:
 			if not lock.try_acquire():
 				return False
@@ -52,12 +42,6 @@ class Signal(object):
 		with Lock(self.name):
 			self.__send(data)
 
-	def __get_listener_name(self, listener):
-		''' Gets the fully qualified name of listener. '''
-		if isinstance(listener, basestring):
-			return listener
-		return '%s.%s' % (listener.__module__, listener.__name__)
-
 	def __send(self, data=None):
 		''' Sends the signal to registered listeners, queueing
 		it for delivery in subsequent requests.
@@ -67,6 +51,43 @@ class Signal(object):
 		messages.append(data)
 		memcache.set(self.name, messages, namespace = MESSAGES_NAMESPACE)
 
+
+class SignalsMiddleware(object):
+	''' WSGI middleware for gae-signals. Ensures that pending singals
+	get processed before proceeding with handling the request.
+	'''
+	def __init__(self, app, signal_mapping=[]):
+		self.app = app
+		self.__setup_listeners(signal_mapping)
+
+	def __call__(self, environ, start_response):
+		self.__deliver_messages()
+		return self.app(environ, start_response)
+
+	def __setup_listeners(self, signal_mapping):
+		is_valid_listener = lambda l: isinstance(l, basestring) or callable(l)
+
+		self.mapping = {}
+		for signal_name, listeners in dict(signal_mapping).iteritems():
+			if is_valid_listener(listeners):
+				listeners = [listeners]
+			elif not isinstance(listeners, collections.Iterable):
+				raise ValueError, "Invalid listener(s): %r" % listeners
+			self.mapping[signal_name] = listeners
+
+	def __deliver_messages():
+		for signal_name, listeners in self.mapping.iteritems():
+			signal = Signal(signal_name)
+			with Lock(signal.name):
+				messages = memcache.get(signal.name, namespace = Signal.MESSAGES_NAMESPACE)
+				for msg, listener in itertools.izip(messages, listeners):
+					if msg is None:	listener()
+					else:			listener(msg)
+				memcache.set(signal.name, [], namespace = Signal.MESSAGES_NAMESPACE)
+
+
+###############################################################################
+# Utilities
 
 class Lock(object):
 	''' Memcached-based lock, providing mutual exclusion. '''
@@ -98,15 +119,3 @@ class Lock(object):
 	def release(self):
 		''' Releases the lock. Does nothing if the lock has not been acquired. '''
 		memcache.delete(self.key, namespace = self.NAMESPACE)
-
-
-class SignalsMiddleware(object):
-	''' WSGI middleware for gae-signals. Ensures that pending singals
-	get processed before proceeding with handling the request.
-	'''
-	def __init__(self, app):
-		self.app = app
-
-	def __call__(self, environ, start_response):
-		# nothing yet
-		return self.app(environ, start_response)
