@@ -5,20 +5,27 @@
 
 		<style type="text/css">
 			.title {
-				font-size: 72px;
+				font-size: 64px;
 			}
 			.subtitle {
-				font-size: 36px;
+				font-size: 32px;
 				color: gray;
 			}
 
 			.space {
-				height: 32px;
+				height: 36px;
+			}
+
+			.last {
+				font-size: 16px;
+			}
+			.last .data {
+				color: red;
 			}
 		</style>
 	</head>
 	<body>
-		<div class="title"></div>
+		<div class="title">gae-signals</div>
 		<div class="subtitle">Signals library for Google App Engine</div>
 
 		<div class="space"></div>
@@ -28,5 +35,15 @@
 			&nbsp;
 			<input type="submit" name="submit" value="Signal">
 		</form>
+
+		<div class="space"></div>
+		
+		<div class="last">
+			{% if last is  none %}
+				&lt; No previous signal &gt;
+			{% else %}
+				Last signal data: <span class="data">{{ last }}</span>
+			{% endif %}
+		</div>
 	</body>
 </html>

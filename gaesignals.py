@@ -46,9 +46,9 @@ class Signal(object):
 		it for delivery in subsequent requests.
 		@warning: This should be invoked within a lock
 		'''
-		messages = memcache.get(self.name, namespace = MESSAGES_NAMESPACE) or []
+		messages = memcache.get(self.name, namespace = self.MESSAGES_NAMESPACE) or []
 		messages.append(data)
-		memcache.set(self.name, messages, namespace = MESSAGES_NAMESPACE)
+		memcache.set(self.name, messages, namespace = self.MESSAGES_NAMESPACE)
 
 
 class SignalsMiddleware(object):
@@ -74,11 +74,11 @@ class SignalsMiddleware(object):
 				raise ValueError, "Invalid listener(s): %r" % listeners
 			self.mapping[signal_name] = listeners
 
-	def __deliver_messages():
+	def __deliver_messages(self):
 		for signal_name, listeners in self.mapping.iteritems():
 			signal = Signal(signal_name)
 			with Lock(signal.name):
-				messages = memcache.get(signal.name, namespace = Signal.MESSAGES_NAMESPACE)
+				messages = memcache.get(signal.name, namespace = Signal.MESSAGES_NAMESPACE) or []
 				for msg, listener in itertools.izip(messages, listeners):
 					if msg is None:	listener()
 					else:			listener(msg)

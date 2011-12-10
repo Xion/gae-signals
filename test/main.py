@@ -2,6 +2,7 @@
 gae-signals test application
 '''
 from gaesignals import Signal
+from google.appengine.api import memcache
 import webapp2
 import jinja2
 import os
@@ -17,12 +18,14 @@ def render_template(template_file, **params):
 class MainPage(webapp2.RequestHandler):
 	
 	def get(self):
-		self.response.out.write(render_template('main.html'))
+		last_foo_data = memcache.get('foo')
+		memcache.delete('foo')
+		self.response.out.write(render_template('main.html', last=last_foo_data))
 
 	def post(self):
 		data = self.request.POST.get('data')
 		Signal('foo').send(data)
-		self.response.out.write(render_template('main.html', data=data))
+		self.redirect(self.request.path)
 
 
 app = webapp2.WSGIApplication([('/', MainPage)], debug=True)
