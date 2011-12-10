@@ -6,10 +6,10 @@ api_version: 1
 
 
 libraries:
-- name: jinja
+- name: jinja2
   version: latest
 
  
- handlers:
- - url: /.*
-   script: main
+handlers:
+- url: /.*
+  script: main

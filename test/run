@@ -1,0 +1,4 @@
+#!/bin/sh
+
+export PYTHON_PATH=$PYTHON_PATH:.:..
+python $GAE_PATH/dev_appserver.py .
