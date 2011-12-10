@@ -24,7 +24,6 @@ class Signal(object):
 		on signal's message queue.
 		@return: Whether sending succeeded
 		'''
-		lock = Lock(self.name)
 		try:
 			if not lock.try_acquire():
 				return False
@@ -101,7 +100,7 @@ class Lock(object):
 	def __enter__(self):
 		self.acquire()
 
-	def __exit__(self, _, _, _):
+	def __exit__(self, exit_type, value, traceback):
 		self.release()
 
 	def try_acquire(self):
