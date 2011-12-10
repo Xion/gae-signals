@@ -1,0 +1,15 @@
+application: gae-signals-test
+version: dev
+runtime: python27
+threadsafe: yes
+api_version: 1
+
+
+libraries:
+- name: jinja
+  version: latest
+
+ 
+ handlers:
+ - url: /.*
+   script: main
