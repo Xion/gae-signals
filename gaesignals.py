@@ -5,8 +5,8 @@ Signals' library for Google App Engine
 '''
 from google.appengine.api import memcache
 from time import time
+from itertools import starmap, product
 import collections
-import itertools
 
 
 __all__ = ['Signal', 'SignalMapping', 'deliver', 'SignalsMiddleware']
@@ -123,7 +123,7 @@ class SignalMapping(object):
                 memcache.set(signal_name, [], namespace = Signal.MESSAGES_NAMESPACE)
             return len(messages)
         
-        return sum(deliver_signal(s, l) for s, l in signal_mapping_dict.iteritems())
+        return sum(starmap(deliver_signal, signal_mapping_dict.iteritems()))
 
     def __deliver_weakly(self, signal_mapping_dict):
         ''' Delivers messages weakly, using the specified signal mapping dictionary.
@@ -143,7 +143,7 @@ class SignalMapping(object):
             cross_call(listeners, messages)
             return len(messages)
         
-        return sum(deliver_signal(s, l) for s, l in signal_mapping_dict.iteritems())
+        return sum(starmap(deliver_signal, signal_mapping_dict.iteritems()))
 
 
 class SignalsMiddleware(object):
@@ -209,6 +209,6 @@ def cross_call(functions, arguments, omit_none=True, quelch_exceptions=True):
         except:
             if not quelch_exceptions:
                 raise
-
-    return (invoke(func, arg)
-            for func, arg in itertools.izip(functions, arguments))
+    
+    for func, arg in product(functions, arguments):
+        invoke(func, arg)
