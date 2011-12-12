@@ -9,6 +9,9 @@ import collections
 import itertools
 
 
+__all__ = ['Signal', 'SignalMapping', 'deliver', 'SignalsMiddleware']
+
+
 class Signal(object):
 	''' Represents the signal, identified by a name. '''
 	MESSAGES_NAMESPACE = 'gae-signals__messages'
@@ -54,14 +57,45 @@ class Signal(object):
 ###############################################################################
 # Signal delivery
 
-def deliver(signal_mapping):
+class SignalMapping(object):
+	''' Represents a mapping from signal names to its listeners. '''
+
+	def __init__(self, weak=[], reliable=[]):
+		''' Initializes the signal mapping.
+		@param weak: Mapping for signals that can be delivered unreliably,
+					 e.g. more than once or even not at all
+		@param reliable: Mapping for signals that should be delivered reliably,
+						 i.e. exactly once
+		'''
+		self.weak_mapping = __preprocess_signal_mapping(weak)
+		self.reliable_mapping = __preprocess_signal_mapping(reliable)
+
+	def deliver(self, weak=True, reliable=True):
+		''' Delivers pending signals to listeners specified within this signal mapping.
+		@return: Number of signals delivered
+		'''
+		delivered = 0
+
+		if self.reliable_mapping:
+			delivered += __deliver_messages_reliably(self.reliable.mapping)
+		if self.weak_mapping:
+			delivered += __deliver_messages_weakly(self.weak_mapping)
+
+		return delivered
+	
+
+def deliver(signal_mapping, reliable=False):
 	''' Delivers pending signals using the specified signal mapping.
 	@param signal_mapping: A dictionary (or list of pairs) mapping signal names
 						   to their listeners
 	@return: Number of messages delivered
 	'''
+	if isinstance(signal_mapping, SignalMapping):
+		return signal_mapping.deliver()
+
 	mapping = __preprocess_signal_mapping(signal_mapping)
-	return __deliver_messages(mapping)
+	deliver_func = __deliver_messages_reliably if reliable else __deliver_messages_weakly
+	return deliver_func(mapping)
 
 
 class SignalsMiddleware(object):
@@ -70,10 +104,12 @@ class SignalsMiddleware(object):
 	'''
 	def __init__(self, app, signal_mapping=[]):
 		self.app = app
-		self.mapping = __preprocess_signal_mapping(signal_mapping)
+		if not isinstance(signal_mapping, SignalMapping):
+			signal_mapping = SignalMapping(signal_mapping)
+		self.mapping = signal_mapping
 
 	def __call__(self, environ, start_response):
-		__deliver_messages(self.mapping)
+		self.mapping.deliver()
 		return self.app(environ, start_response)
 
 
@@ -98,8 +134,9 @@ def __preprocess_signal_mapping(signal_mapping):
 	return mapping
 
 
-def __deliver_messages(signal_mapping_dict):
-	''' Delivers messages, using the specified signal mapping dictionary.
+def __deliver_messages_reliably(signal_mapping_dict):
+	''' Delivers messages reliably, using the specified signal mapping dictionary.
+	It uses a memcache lock for every signal in the mapping.
 	@return: Number of messages delivered
 	'''
 	delivered = 0
@@ -108,13 +145,36 @@ def __deliver_messages(signal_mapping_dict):
 		signal = Signal(signal_name)
 		with Lock(signal.name):
 			messages = memcache.get(signal.name, namespace = Signal.MESSAGES_NAMESPACE) or []
-			for msg, listener in itertools.izip(messages, listeners):
-				if msg is None:	listener()
-				else:			listener(msg)
+			__cross_call(listeners, messages)
 			memcache.set(signal.name, [], namespace = Signal.MESSAGES_NAMESPACE)
 			delivered += len(msg)
 
 	return delivered
+
+
+def __deliver_messages_weakly(signal_mapping_dict):
+	''' Delivers messages weakly, using the specified signal mapping dictionary.
+	It uses only two memcache calls for whole mapping but there is no guarantee
+	of actual delivery being done exactly once (or even being done at all).
+	@return: Number of messages delivered
+	'''
+	messages_dict = memcache.get_multi(signal_mapping_dict.keys(), namespace = Signal.MESSAGES_NAMESPACE)
+	for signal_name, listeners in signal_mapping_dict.iteritems():
+		__cross_call(listeners, messages_dict[signal_name])
+
+	empty_messages = dict((k, []) for k in messages_dict.keys())
+	memcache.set_multi(empty_messages)
+
+	return reduce(lambda sum, msgs: sum + len(msgs), messages_dict.values())
+			
+
+def __cross_call(functions, arguments, omit_none=True):
+	''' Helper function that calls all given functions with all given arguments.
+	@param omit_none: If True, arguments that are None will not be passed to functions at all
+	'''
+	for func, arg in itertools.izip(functions, arguments):
+		if arg is None:	func()
+		else:			func(arg)
 
 
 ###############################################################################
