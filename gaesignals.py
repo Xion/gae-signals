@@ -41,7 +41,7 @@ class Signal(object):
 		with Lock(self.name):
 			self.__send(data)
 
-	def __send_reliably(self, data=None):
+	def __send(self, data=None):
 		''' Sends the signal to registered listeners, queueing
 		it for delivery in subsequent requests.
 		@warning: This should be invoked within a lock
