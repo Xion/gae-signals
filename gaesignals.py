@@ -51,38 +51,70 @@ class Signal(object):
 		memcache.set(self.name, messages, namespace = self.MESSAGES_NAMESPACE)
 
 
+###############################################################################
+# Signal delivery
+
+def deliver(signal_mapping):
+	''' Delivers pending signals using the specified signal mapping.
+	@param signal_mapping: A dictionary (or list of pairs) mapping signal names
+						   to their listeners
+	@return: Number of messages delivered
+	'''
+	mapping = __preprocess_signal_mapping(signal_mapping)
+	return __deliver_messages(mapping)
+
+
 class SignalsMiddleware(object):
 	''' WSGI middleware for gae-signals. Ensures that pending singals
 	get processed before proceeding with handling the request.
 	'''
 	def __init__(self, app, signal_mapping=[]):
 		self.app = app
-		self.__setup_listeners(signal_mapping)
+		self.mapping = __preprocess_signal_mapping(signal_mapping)
 
 	def __call__(self, environ, start_response):
-		self.__deliver_messages()
+		__deliver_messages(self.mapping)
 		return self.app(environ, start_response)
 
-	def __setup_listeners(self, signal_mapping):
-		is_valid_listener = lambda l: isinstance(l, basestring) or callable(l)
 
-		self.mapping = {}
-		for signal_name, listeners in dict(signal_mapping).iteritems():
-			if is_valid_listener(listeners):
-				listeners = [listeners]
-			elif not isinstance(listeners, collections.Iterable):
-				raise ValueError, "Invalid listener(s): %r" % listeners
-			self.mapping[signal_name] = listeners
+###############################################################################
+# Common functions
 
-	def __deliver_messages(self):
-		for signal_name, listeners in self.mapping.iteritems():
-			signal = Signal(signal_name)
-			with Lock(signal.name):
-				messages = memcache.get(signal.name, namespace = Signal.MESSAGES_NAMESPACE) or []
-				for msg, listener in itertools.izip(messages, listeners):
-					if msg is None:	listener()
-					else:			listener(msg)
-				memcache.set(signal.name, [], namespace = Signal.MESSAGES_NAMESPACE)
+def __preprocess_signal_mapping(signal_mapping):
+	''' Goes over the specified signal mapping and turns it into
+	a dictionary, mapping signal names to lists of listeners that shall handle them.
+	@return: A dictionary described above
+	'''
+	is_valid_listener = lambda l: isinstance(l, basestring) or callable(l)
+
+	mapping = {}
+	for signal_name, listeners in dict(signal_mapping).iteritems():
+		if is_valid_listener(listeners):
+			listeners = [listeners]
+		elif not isinstance(listeners, collections.Iterable):
+			raise ValueError, "Invalid listener(s): %r" % listeners
+		mapping[signal_name] = listeners
+
+	return mapping
+
+
+def __deliver_messages(signal_mapping_dict):
+	''' Delivers messages, using the specified signal mapping dictionary.
+	@return: Number of messages delivered
+	'''
+	delivered = 0
+
+	for signal_name, listeners in signal_mapping_dict.iteritems():
+		signal = Signal(signal_name)
+		with Lock(signal.name):
+			messages = memcache.get(signal.name, namespace = Signal.MESSAGES_NAMESPACE) or []
+			for msg, listener in itertools.izip(messages, listeners):
+				if msg is None:	listener()
+				else:			listener(msg)
+			memcache.set(signal.name, [], namespace = Signal.MESSAGES_NAMESPACE)
+			delivered += len(msg)
+
+	return delivered
 
 
 ###############################################################################
