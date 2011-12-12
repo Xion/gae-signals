@@ -101,7 +101,7 @@ class SignalMapping(object):
         a dictionary, mapping signal names to lists of listeners that shall handle them.
         @return: A dictionary described above
         '''
-        is_valid_listener = lambda l: isinstance(l, basestring) or callable(l)
+        is_valid_listener = callable
 
         mapping = {}
         for signal_name, listeners in dict(signal_mapping).iteritems():

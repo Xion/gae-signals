@@ -18,4 +18,3 @@ _gae-signals_ library provides simple, memcache-based implementation of signals 
 
 ## Usage
 
-(TBD)
