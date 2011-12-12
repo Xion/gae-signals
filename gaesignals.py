@@ -121,11 +121,11 @@ class SignalMapping(object):
 		delivered = 0
 
 		for signal_name, listeners in signal_mapping_dict.iteritems():
-			with Lock(signal.name):
+			with Lock(signal_name):
 				messages = memcache.get(signal_name, namespace = Signal.MESSAGES_NAMESPACE) or []
 				cross_call(listeners, messages)
 				memcache.set(signal_name, [], namespace = Signal.MESSAGES_NAMESPACE)
-				delivered += len(msg)
+			delivered += len(messages)
 
 		return delivered
 
@@ -137,12 +137,13 @@ class SignalMapping(object):
 		'''
 		messages_dict = memcache.get_multi(signal_mapping_dict.keys(), namespace = Signal.MESSAGES_NAMESPACE)
 		for signal_name, listeners in signal_mapping_dict.iteritems():
-			cross_call(listeners, messages_dict[signal_name])
+			messages = messages_dict.get(signal_name) or []
+			cross_call(listeners, messages)
 
 		empty_messages = dict((k, []) for k in messages_dict.keys())
-		memcache.set_multi(empty_messages)
+		memcache.set_multi(empty_messages, namespace = Signal.MESSAGES_NAMESPACE)
 
-		return reduce(lambda sum, msgs: sum + len(msgs), messages_dict.values())
+		return reduce(lambda sum, msgs: sum + len(msgs), messages_dict.values(), 0)
 
 
 class SignalsMiddleware(object):
@@ -200,5 +201,7 @@ def cross_call(functions, arguments, omit_none=True):
 	@param omit_none: If True, arguments that are None will not be passed to functions at all
 	'''
 	for func, arg in itertools.izip(functions, arguments):
-		if arg is None:	func()
-		else:			func(arg)
+		if arg is None and omit_none:
+			func()
+		else:
+			func(arg)
