@@ -101,11 +101,9 @@ class SignalMapping(object):
         a dictionary, mapping signal names to lists of listeners that shall handle them.
         @return: A dictionary described above
         '''
-        is_valid_listener = callable
-
         mapping = {}
         for signal_name, listeners in dict(signal_mapping).iteritems():
-            if is_valid_listener(listeners):
+            if callable(listeners):
                 listeners = [listeners]
             elif not isinstance(listeners, collections.Iterable):
                 raise ValueError, "Invalid listener(s): %r" % listeners
@@ -118,16 +116,14 @@ class SignalMapping(object):
         It uses a memcache lock for every signal in the mapping.
         @return: Number of messages delivered
         '''
-        delivered = 0
-
-        for signal_name, listeners in signal_mapping_dict.iteritems():
+        def deliver_signal(signal_name, listeners):
             with Lock(signal_name):
                 messages = memcache.get(signal_name, namespace = Signal.MESSAGES_NAMESPACE) or []
                 cross_call(listeners, messages)
                 memcache.set(signal_name, [], namespace = Signal.MESSAGES_NAMESPACE)
-            delivered += len(messages)
-
-        return delivered
+            return len(messages)
+        
+        return sum(deliver_signal(s, l) for s, l in signal_mapping_dict.iteritems())
 
     def __deliver_weakly(self, signal_mapping_dict):
         ''' Delivers messages weakly, using the specified signal mapping dictionary.
@@ -135,15 +131,19 @@ class SignalMapping(object):
         of actual delivery being done exactly once (or even being done at all).
         @return: Number of messages delivered
         '''
-        messages_dict = memcache.get_multi(signal_mapping_dict.keys(), namespace = Signal.MESSAGES_NAMESPACE)
-        for signal_name, listeners in signal_mapping_dict.iteritems():
-            messages = messages_dict.get(signal_name) or []
-            cross_call(listeners, messages)
+        empty_messages = dict((k, []) for k in signal_mapping_dict.keys())
 
-        empty_messages = dict((k, []) for k in messages_dict.keys())
+        # get pending messages and immediately replace them with empty lists in memcache
+        # (this maximally reduces the time-window where something hazardous can happen)
+        messages_dict = memcache.get_multi(signal_mapping_dict.keys(), namespace = Signal.MESSAGES_NAMESPACE)
         memcache.set_multi(empty_messages, namespace = Signal.MESSAGES_NAMESPACE)
 
-        return reduce(lambda sum, msgs: sum + len(msgs), messages_dict.values(), 0)
+        def deliver_signal(signal_name, listeners):
+            messages = messages_dict.get(signal_name) or []
+            cross_call(listeners, messages)
+            return len(messages)
+        
+        return sum(deliver_signal(s, l) for s, l in signal_mapping_dict.iteritems())
 
 
 class SignalsMiddleware(object):
@@ -196,12 +196,19 @@ class Lock(object):
         memcache.delete(self.key, namespace = self.NAMESPACE)
 
 
-def cross_call(functions, arguments, omit_none=True):
+def cross_call(functions, arguments, omit_none=True, quelch_exceptions=True):
     ''' Helper function that calls all given functions with all given arguments.
     @param omit_none: If True, arguments that are None will not be passed to functions at all
+    @param quelch_exceptions: If True, any exceptions risen from the calls will be ignored
+    @return: Iterable with functions' results
     '''
-    for func, arg in itertools.izip(functions, arguments):
-        if arg is None and omit_none:
-            func()
-        else:
-            func(arg)
+    def invoke(func, arg):
+        no_arg = arg is None and omit_none
+        try:
+            return func() if no_arg else func(arg)
+        except:
+            if not quelch_exceptions:
+                raise
+
+    return (invoke(func, arg)
+            for func, arg in itertools.izip(functions, arguments))
