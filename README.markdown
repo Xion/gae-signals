@@ -15,6 +15,51 @@ Background processes can then have such signals delivered and perform those time
 tasks without increasing visible latency.
 
 _gae-signals_ library provides simple, memcache-based implementation of signals for Google App Engine.
+They are quite similar to [Django signals](https://docs.djangoproject.com/en/dev/topics/signals/)
+or [Flask signals](http://flask.pocoo.org/docs/signals/), although somewhat simplier.
 
-## Usage
+## Basic usage
 
+Sending a signal is as easy as invoking <code>send</code> method from the <code>Signal</code> class:
+
+```python
+from gaesignals import Signal
+Signal('my_signal').send()
+
+# optional data to be passed along
+from datetime import datetime
+Signal('my_signal').send(datetime.now())
+```
+Delivery can be performed at any time using the <code>deliver</code> function. It takes a mapping,
+associating signal names to their handlers - similarly to _webapp_'s <code>WSGIApplication</code>
+routing of request handlers:
+
+```python
+from gaesignals import deliver
+import logging
+
+def my_signal_handler(data = None):
+    logging.info("Received my_signal with data: %r", data)
+
+deliver([
+        ('my_signal', my_signal_handler),
+        ])
+```
+Alternatively, you can use the WSGI middleware, which delivers specified signals at the start of request:
+
+```python
+# appengine_config.py
+
+from gaesignals import SignalsMiddleware
+from myapp.signals import my_signal_handler
+
+
+def webapp_add_wsgi_middleware(app):
+    app = SignalsMiddleware(app, [
+        ('my_signal', my_signal_handler)
+    ])
+    return app
+```
+In practice, you would want to deliver different signals at different times. For example, signals that
+are specific to current user should be dispatched when the user is already authenticated - e.g. in
+<code>get</code>/<code>post</code> method of <code>RequestHandler</code> if using the _webapp_ framework.

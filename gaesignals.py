@@ -4,8 +4,8 @@ Signals' library for Google App Engine
 @author Karol Kuczmarski "Xion"
 '''
 from google.appengine.api import memcache
-from time import time
 from itertools import starmap, product
+from time import time
 import collections
 
 
