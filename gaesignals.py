@@ -34,20 +34,24 @@ class Signal(object):
         finally:
             lock.release()
 
-    def send(self, data=None):
+    def send(self, data=None, reliable=False):
         ''' Sends the signal to all registered listeners.
         The signal will be intercepted at subsequent request,
         depending on delivery options.
         @param data: Optional data to be included with the signal.
                      If used, it should be a pickleable object.
+        @param reliable: Whether sending should be reliable
+                         and use a global memcache-based lock
         '''
-        with Lock(self.name):
+        if reliable:
+            with Lock(self.name):
+                self.__send(data)
+        else:
             self.__send(data)
 
     def __send(self, data=None):
         ''' Sends the signal to registered listeners, queueing
         it for delivery in subsequent requests.
-        @warning: This should be invoked within a lock
         '''
         messages = memcache.get(self.name, namespace = self.MESSAGES_NAMESPACE) or []
         messages.append(data)
