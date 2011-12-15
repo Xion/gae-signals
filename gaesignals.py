@@ -1,8 +1,14 @@
 '''
 gae-signals
 Signals' library for Google App Engine
-@author Karol Kuczmarski "Xion"
 '''
+
+__author__ = "Karol Kuczmarski (karol.kuczmarski@gmail.com)"
+__copyright__ = "Copyright 2011, Karol Kuczmarski"
+__license__ = "MIT"
+__version__ = "0.1.1"
+
+
 from google.appengine.api import memcache
 from itertools import starmap, product
 from time import time
