@@ -34,16 +34,13 @@ class Signal(object):
         @param reliable: Whether the sending should be reliable,
                          i.e. use Compare-And-Set to "synchronize" on list of messages
         '''
-        mc = memcache.Client() if reliable else memcache
-        mc_get = getattr(mc, 'gets' if reliable else 'get')
-        mc_set = getattr(mc, 'cas' if reliable else 'set')
-
-        while True:
-            messages = mc_get(self.name, namespace = self.MESSAGES_NAMESPACE)
+        def append_data(messages):
             messages = messages or []
             messages.append(data)
-            if mc_set(self.name, messages, namespace = self.MESSAGES_NAMESPACE):
-                return True
+            return messages
+
+        return memcache_update(self.name, append_data,
+                               namespace=self.MESSAGES_NAMESPACE, reliable=reliable)
 
 
 
@@ -156,6 +153,27 @@ class SignalsMiddleware(object):
 
 ###############################################################################
 # Utilities
+
+def memcache_update(key, func, time=0, namespace=None, reliable=False):
+    ''' Updates a value in memcache by performing a specified function on it.
+    @param key: Key of value to be updated
+    @param func: Function used to obtain new value. If 'reliable' is True,
+                 it better be a pure function, for it can be invoked many times
+    @param time: Expiration time for updated value
+    @param namespace: Memcache namespace where the value resides
+    @param reliable: Whether the update should be reliable (and use .cas())
+                     or not (and use regulary .set())
+    '''
+    mc = memcache.Client() if reliable else memcache
+    mc_get = getattr(mc, 'gets' if reliable else 'get')
+    mc_set = getattr(mc, 'cas' if reliable else 'set')
+
+    while True:
+        value = mc_get(key, namespace = namespace)
+        value = func(value)
+        if mc_set(key, value, namespace = namespace):
+            return True
+
 
 class Lock(object):
     ''' Memcached-based lock, providing mutual exclusion. '''
