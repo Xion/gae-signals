@@ -34,7 +34,7 @@ class Signal(object):
         @param reliable: Whether the sending should be reliable,
                          i.e. use Compare-And-Set to "synchronize" on list of messages
         '''
-        def append_data(messages):
+        def append_data(_, messages):
             messages = messages or []
             messages.append(data)
             return messages
@@ -154,25 +154,28 @@ class SignalsMiddleware(object):
 ###############################################################################
 # Utilities
 
-def memcache_update(key, func, time=0, namespace=None, reliable=False):
+def memcache_update(keys, func, time=0, namespace=None, reliable=False):
     ''' Updates a value in memcache by performing a specified function on it.
-    @param key: Key of value to be updated
-    @param func: Function used to obtain new value. If 'reliable' is True,
-                 it better be a pure function, for it can be invoked many times
+    @param key: One or more keys of values to be updated
+    @param func: Function used to obtain new value. It should accept two 
+                 arguments: key and value, and return the new value.
+                 If 'reliable' is True, it better be a pure function,
+                 for it can be invoked many times
     @param time: Expiration time for updated value
     @param namespace: Memcache namespace where the value resides
     @param reliable: Whether the update should be reliable (and use .cas())
                      or not (and use regulary .set())
     '''
-    mc = memcache.Client() if reliable else memcache
-    mc_get = getattr(mc, 'gets' if reliable else 'get')
-    mc_set = getattr(mc, 'cas' if reliable else 'set')
+    if isinstance(keys, basestring):
+        keys = [keys]
 
-    while True:
-        value = mc_get(key, namespace = namespace)
-        value = func(value)
-        if mc_set(key, value, namespace = namespace):
-            return True
+    mc = memcache.Client() if reliable else memcache
+    mc_set = getattr(mc, 'cas_multi' if reliable else 'set_multi')
+
+    while keys:
+        values = mc.get_multi(keys, namespace = namespace, for_cas=reliable)
+        values = dict([(key, func(key, value)) for key, value in values.iteritems()])
+        keys = mc_set(values, namespace = namespace)
 
 
 class Lock(object):
