@@ -6,7 +6,7 @@ Signals' library for Google App Engine
 __author__ = "Karol Kuczmarski (karol.kuczmarski@gmail.com)"
 __copyright__ = "Copyright 2011, Karol Kuczmarski"
 __license__ = "MIT"
-__version__ = "0.1.1"
+__version__ = "0.2"
 
 
 from google.appengine.api import memcache
@@ -15,32 +15,28 @@ from time import time
 import collections
 
 
-__all__ = ['Signal', 'SignalMapping', 'deliver', 'SignalsMiddleware']
+__all__ = ['send', 'deliver', 'SignalsMiddleware', 'SignalMapping']
 
 
-class Signal(object):
-    ''' Represents the signal, identified by a name. '''
-    MESSAGES_NAMESPACE = 'gae-signals__messages'
+MESSAGES_NAMESPACE = 'gae-signals__messages'
 
-    def __init__(self, name):
-        if not name:
-            raise ValueError, "Signal must have a name"
-        self.name = name
+def send(signal, data=None, reliable=False):
+    ''' Sends a signal signal to registered listeners.
+    @param signal: Name of signal to send
+    @param data: Optional data to be sent with the signal
+    @param reliable: Whether the sending should be reliable,
+                     i.e. use Compare-And-Set to "synchronize" on list of messages
+    '''
+    if not signal:
+        raise ValueError, "Signal name must not be empty"
 
-    def send(self, data=None, reliable=False):
-        ''' Sends the signal to registered listeners, queueing it
-        for deilivery in subsequent requests.
-        @param data: Optional data to be sent with the signal
-        @param reliable: Whether the sending should be reliable,
-                         i.e. use Compare-And-Set to "synchronize" on list of messages
-        '''
-        def append_data(_, messages):
-            messages = messages or []
-            messages.append(data)
-            return messages
+    def append_data(_, messages):
+        messages = messages or []
+        messages.append(data)
+        return messages
 
-        return memcache_update(self.name, append_data,
-                               namespace=self.MESSAGES_NAMESPACE, reliable=reliable)
+    return memcache_update(signal, append_data,
+                           namespace=MESSAGES_NAMESPACE, reliable=reliable)
 
 
 
@@ -108,9 +104,9 @@ class SignalMapping(object):
         '''
         def deliver_signal(signal_name, listeners):
             with Lock(signal_name):
-                messages = memcache.get(signal_name, namespace = Signal.MESSAGES_NAMESPACE) or []
+                messages = memcache.get(signal_name, namespace=MESSAGES_NAMESPACE) or []
                 cross_call(listeners, messages)
-                memcache.set(signal_name, [], namespace = Signal.MESSAGES_NAMESPACE)
+                memcache.set(signal_name, [], namespace=MESSAGES_NAMESPACE)
             return len(messages)
         
         return sum(starmap(deliver_signal, signal_mapping_dict.iteritems()))
@@ -125,8 +121,8 @@ class SignalMapping(object):
 
         # get pending messages and immediately replace them with empty lists in memcache
         # (this maximally reduces the time-window where something hazardous can happen)
-        messages_dict = memcache.get_multi(signal_mapping_dict.keys(), namespace = Signal.MESSAGES_NAMESPACE)
-        memcache.set_multi(empty_messages, namespace = Signal.MESSAGES_NAMESPACE)
+        messages_dict = memcache.get_multi(signal_mapping_dict.keys(), namespace=MESSAGES_NAMESPACE)
+        memcache.set_multi(empty_messages, namespace=MESSAGES_NAMESPACE)
 
         def deliver_signal(signal_name, listeners):
             messages = messages_dict.get(signal_name) or []
