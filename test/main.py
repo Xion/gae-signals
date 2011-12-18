@@ -1,7 +1,7 @@
 '''
 gae-signals test application
 '''
-from gaesignals import send
+from gaesignals import send_multi
 from google.appengine.api import memcache
 import webapp2
 import jinja2
@@ -24,7 +24,7 @@ class MainPage(webapp2.RequestHandler):
 
 	def post(self):
 		data = self.request.POST.get('data')
-		send('foo', data)
+		send_multi({'foo': data})
 		self.redirect(self.request.path)
 
 

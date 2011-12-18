@@ -6,7 +6,7 @@ Signals' library for Google App Engine
 __author__ = "Karol Kuczmarski (karol.kuczmarski@gmail.com)"
 __copyright__ = "Copyright 2011, Karol Kuczmarski"
 __license__ = "MIT"
-__version__ = "0.2"
+__version__ = "0.2.1"
 
 
 from google.appengine.api import memcache
@@ -38,6 +38,27 @@ def send(signal, data=None, reliable=False):
     return memcache_update(signal, append_data,
                            namespace=MESSAGES_NAMESPACE, reliable=reliable)
 
+
+def send_multi(signals, reliable=False):
+    ''' Sends multiple signals at once, saving on memcache calls.
+    @param signals: Iterable of signal names or pairs (signal, data),
+                    or a dictionary mapping signal names to data
+    @param reliable: Whether the sending should be relialble
+    '''
+    if not signals: return
+
+    if not isinstance(signals, collections.Mapping):
+        signals = dict(((s, None) if isinstance(s, basestring) else s)
+                       for s in signals)
+    
+    def append_data(signal, messages):
+        data = signals[signal]
+        messages = messages or []
+        messages.append(data)
+        return messages
+
+    return memcache_update(signals.keys(), append_data,
+                           namespace=MESSAGES_NAMESPACE, reliable=reliable)
 
 
 ###############################################################################
