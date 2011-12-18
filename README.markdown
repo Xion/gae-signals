@@ -20,15 +20,15 @@ or [Flask signals](http://flask.pocoo.org/docs/signals/), although somewhat simp
 
 ## Usage
 
-Sending a signal is as easy as invoking <code>send</code> method from the <code>Signal</code> class:
+Sending a signal is as easy as invoking the <code>send</code> function:
 
 ```python
-from gaesignals import Signal
-Signal('my_signal').send()
+from gaesignals import send
+send('my_signal')
 
 # optional data to be passed along
 from datetime import datetime
-Signal('my_signal').send(datetime.now())
+send('my_signal', datetime.now())
 ```
 Delivery can be performed at any time using the <code>deliver</code> function. It takes a mapping,
 associating signal names to their handlers - similarly to _webapp_'s <code>WSGIApplication</code>
@@ -88,7 +88,7 @@ a memcache-based synchronization lock. Therefore using the default ("weak") deli
 ### Minimalizing contention
 
 For best results, you should use finely-grained signals whose scope is as small as possible. For example,
-having a global <code>'user\_signed\_up'</code> may prove troublesome if it's triggered many times per second.
+having a global signal <code>'user\_signed\_up'</code> may prove troublesome if it's triggered many times per second.
 On the other hand, something like <code>user\_54274\_password\_change</code> - that is, signal specific to
 a single user - should be absolutely fine in all reasonable cases.
 
