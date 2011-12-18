@@ -3,6 +3,6 @@ from datetime import datetime
 import logging
 
 
-def foo(data):
-	logging.info("Signal 'foo' received with data: %s", data)
+def foo(signal, data):
+	logging.info("Signal '%s' received with data: %s", signal, data)
 	memcache.set('foo', data)

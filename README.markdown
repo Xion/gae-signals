@@ -38,8 +38,8 @@ routing of request handlers:
 from gaesignals import deliver
 import logging
 
-def my_signal_handler(data = None):
-    logging.info("Received my_signal with data: %r", data)
+def my_signal_handler(signal, data):
+    logging.info("Received %s with data: %r", signal, data)
 
 deliver([
         ('my_signal', my_signal_handler),

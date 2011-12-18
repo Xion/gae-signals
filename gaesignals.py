@@ -10,7 +10,7 @@ __version__ = "0.2"
 
 
 from google.appengine.api import memcache
-from itertools import starmap, product
+from itertools import izip, repeat, starmap, product
 from time import time
 import collections
 
@@ -102,11 +102,12 @@ class SignalMapping(object):
         It uses a memcache lock for every signal in the mapping.
         @return: Number of messages delivered
         '''
-        def deliver_signal(signal_name, listeners):
-            with Lock(signal_name):
-                messages = memcache.get(signal_name, namespace=MESSAGES_NAMESPACE) or []
-                cross_call(listeners, messages)
-                memcache.set(signal_name, [], namespace=MESSAGES_NAMESPACE)
+        def deliver_signal(signal, listeners):
+            with Lock(signal):
+                messages = memcache.get(signal, namespace=MESSAGES_NAMESPACE) or []
+                listener_args = izip(repeat(signal), messages)
+                cross_call(listeners, listener_args)
+                memcache.set(signal, [], namespace=MESSAGES_NAMESPACE)
             return len(messages)
         
         return sum(starmap(deliver_signal, signal_mapping_dict.iteritems()))
@@ -124,9 +125,10 @@ class SignalMapping(object):
         messages_dict = memcache.get_multi(signal_mapping_dict.keys(), namespace=MESSAGES_NAMESPACE)
         memcache.set_multi(empty_messages, namespace=MESSAGES_NAMESPACE)
 
-        def deliver_signal(signal_name, listeners):
-            messages = messages_dict.get(signal_name) or []
-            cross_call(listeners, messages)
+        def deliver_signal(signal, listeners):
+            messages = messages_dict.get(signal) or []
+            listener_args = izip(repeat(signal), messages)
+            cross_call(listeners, listener_args)
             return len(messages)
         
         return sum(starmap(deliver_signal, signal_mapping_dict.iteritems()))
@@ -206,19 +208,19 @@ class Lock(object):
         memcache.delete(self.key, namespace = self.NAMESPACE)
 
 
-def cross_call(functions, arguments, omit_none=True, quelch_exceptions=True):
+def cross_call(functions, arguments, quelch_exceptions=True):
     ''' Helper function that calls all given functions with all given arguments.
-    @param omit_none: If True, arguments that are None will not be passed to functions at all
+    @param functions: Functions to be called
+    @param arguments: Iterable of positional arguments' lists for functions
     @param quelch_exceptions: If True, any exceptions risen from the calls will be ignored
     @return: Iterable with functions' results
     '''
-    def invoke(func, arg):
-        no_arg = arg is None and omit_none
+    def invoke(func, args):
         try:
-            return func() if no_arg else func(arg)
+            return func(*args)
         except:
             if not quelch_exceptions:
                 raise
     
-    for func, arg in product(functions, arguments):
-        invoke(func, arg)
+    for func, args in product(functions, arguments):
+        invoke(func, args)
