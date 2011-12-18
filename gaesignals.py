@@ -27,41 +27,24 @@ class Signal(object):
             raise ValueError, "Signal must have a name"
         self.name = name
 
-    def try_send(self, data=None):
-        ''' Attempts to send the signal to registered listeners.
-        This might fail if it's impossible to immediately acquire the lock
-        on signal's message queue.
-        @return: Whether sending succeeded
-        '''
-        try:
-            if not lock.try_acquire():
-                return False
-            self.__send(data)
-        finally:
-            lock.release()
-
     def send(self, data=None, reliable=False):
-        ''' Sends the signal to all registered listeners.
-        The signal will be intercepted at subsequent request,
-        depending on delivery options.
-        @param data: Optional data to be included with the signal.
-                     If used, it should be a pickleable object.
-        @param reliable: Whether sending should be reliable
-                         and use a global memcache-based lock
+        ''' Sends the signal to registered listeners, queueing it
+        for deilivery in subsequent requests.
+        @param data: Optional data to be sent with the signal
+        @param reliable: Whether the sending should be reliable,
+                         i.e. use Compare-And-Set to "synchronize" on list of messages
         '''
-        if reliable:
-            with Lock(self.name):
-                self.__send(data)
-        else:
-            self.__send(data)
+        mc = memcache.Client() if reliable else memcache
+        mc_get = getattr(mc, 'gets' if reliable else 'get')
+        mc_set = getattr(mc, 'cas' if reliable else 'set')
 
-    def __send(self, data=None):
-        ''' Sends the signal to registered listeners, queueing
-        it for delivery in subsequent requests.
-        '''
-        messages = memcache.get(self.name, namespace = self.MESSAGES_NAMESPACE) or []
-        messages.append(data)
-        memcache.set(self.name, messages, namespace = self.MESSAGES_NAMESPACE)
+        while True:
+            messages = mc_get(self.name, namespace = self.MESSAGES_NAMESPACE)
+            messages = messages or []
+            messages.append(data)
+            if mc_set(self.name, messages, namespace = self.MESSAGES_NAMESPACE):
+                return True
+
 
 
 ###############################################################################
