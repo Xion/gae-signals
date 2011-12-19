@@ -83,7 +83,7 @@ deliver([
         ], reliable=True)
 ```
 This increased the overhead to two memcache calls **per signal**, along with at least two more calls due to using
-a memcache-based synchronization lock. Therefore using the default ("weak") delivery mode is recommended, and default.
+a memcache-based synchronization lock. Therefore using the default ("weak") delivery mode is recommended.
 
 ### Minimalizing contention
 
